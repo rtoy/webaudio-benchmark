@@ -20,6 +20,9 @@ var playingSource = null;
 // audiocontext used to play back the result of the benchmarks
 var ac = new AudioContext();
 
+// If true, use oac.oncomplete event handler instead of oac.startRendering promise.
+var useEvent = false;
+
 function getFile(url, callback) {
   var request = new XMLHttpRequest();
   request.open("GET", url, true);
@@ -44,18 +47,34 @@ function benchmark(testcase, ended) {
   var context = testcase.ctx;
   var start;
 
-  context.oncomplete = function(e) {
-    var end = Date.now();
-    recordResult({
-      name: testcase.name,
-      duration: end - start,
-      buffer: e.renderedBuffer
-    });
-    ended();
-  };
-
-  start = Date.now();
-  context.startRendering();
+  //console.log('useEvent: ' + useEvent);
+  if (useEvent) {
+      context.oncomplete = function(e) {
+          var end = Date.now();
+          recordResult({
+                name: testcase.name,
+                      duration: end - start,
+                      buffer: e.renderedBuffer
+                      });
+          ended();
+          console.log("Test " + testcase.name + ", time = " + (end - start) + " ms");
+      };
+      start = Date.now();
+      context.startRendering();
+  } else {
+      start = Date.now();
+      context.startRendering()
+          .then(buffer => {
+                  var end = Date.now();
+                  recordResult({
+                        name: testcase.name,
+                              duration: end - start,
+                              buffer: buffer
+                              });
+                  ended();
+                  console.log("Test " + testcase.name + ", time = " + (end - start) + " ms");
+              });
+  }
 }
 
 function getMonoFile() {
@@ -95,7 +114,7 @@ function allDone() {
     product_of_durations *= r.duration;
     str += "<tr><td>" + r.name + "</td>" +
                "<td>" + r.duration + "</td>"+
-               "<td>" + Math.round((r.buffer.duration * 1000) / r.duration) + "x</td>"+
+               "<td>" + Math.round((10*r.buffer.duration * 1000) / r.duration)/10 + "x</td>"+
                "<td><button data-soundindex="+(buffers_base + i)+">Play</button> ("+r.buffer.duration+"s)</td>"
           +"</tr>";
     buffers[buffers_base + i] = r.buffer;
@@ -157,6 +176,8 @@ function runAll() {
 }
 
 function initAll() {
+  useEvent = window.location.search.substring(1) === 'useEvent';
+  console.log('Use startRendering event handler: ' +  useEvent);
   for (var i = 0; i < testcases_registered.length; i++) {
     testcases[i] = {};
     testcases[i].ctx = testcases_registered[i].func();
